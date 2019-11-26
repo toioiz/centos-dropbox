@@ -1,0 +1,41 @@
+#!/bin/bash
+# This script is a fork of https://github.com/excelsiord/docker-dropbox
+
+# Set UID/GID if not provided with enviromental variable(s).
+if [ -z "$DBOX_UID" ]; then
+        DBOX_UID=$(cat /etc/passwd | grep dropbox | cut -d: -f3)
+        echo "DBOX_UID variable not specified, defaulting to dropbox user id ($DBOX_UID)"
+fi
+
+if [ -z "$DBOX_GID" ]; then
+        DBOX_GID=$(cat /etc/group | grep dropbox | cut -d: -f3)
+        echo "DBOX_GID variable not specified, defaulting to dropbox user group id ($DBOX_GID)"
+fi
+
+# Look for existing group, if not found create dropbox with specified GID.
+FIND_GROUP=$(grep ":$DBOX_GID:" /etc/group)
+
+if [ -z "$FIND_GROUP" ]; then
+        usermod -g users dropbox
+        groupdel dropbox
+        groupadd -g $DBOX_GID dropbox
+fi
+
+# Set dropbox account's UID.
+usermod -u $DBOX_UID -g $DBOX_GID --non-unique dropbox > /dev/null 2>&1
+
+# Change ownership to dropbox account on all working folders.
+chown -R $DBOX_UID:$DBOX_GID /dropbox
+
+# Change permissions on Dropbox folder
+chmod 755 /dropbox/Dropbox
+
+#  Dropbox did not shutdown properly? Remove files.
+[ ! -e "/dropbox/.dropbox/command_socket" ] || rm /dropbox/.dropbox/command_socket
+[ ! -e "/dropbox/.dropbox/iface_socket" ]   || rm /dropbox/.dropbox/iface_socket
+[ ! -e "/dropbox/.dropbox/unlink.db" ]      || rm /dropbox/.dropbox/unlink.db
+[ ! -e "/dropbox/.dropbox/dropbox.pid" ]    || rm /dropbox/.dropbox/dropbox.pid
+
+echo "Starting dropboxd ($(cat /opt/dropbox/VERSION))..."
+umask 002
+exec su dropbox -s /bin/bash -c /opt/dropbox/dropboxd
